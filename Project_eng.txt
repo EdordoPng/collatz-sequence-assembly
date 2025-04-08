@@ -1,0 +1,199 @@
+# Author : Edoardo Diana | 19/07/2020
+#
+# This program asks the user to input a number and performs the following computations:
+# 1. Calculates the following numbers in the Collatz sequence starting from the input number
+#    The next value in the Collatz sequence is obtained: if x is even -> x/2
+#                                                       if x is odd -> (x * 3) + 1
+# 2. Calculates the number of elements in the sequence, as the sequence will always terminate within a finite set of elements
+# 3. Calculates the number in the sequence that has the maximum number of ones in its binary representation, along with the corresponding value
+
+# $t0 number of elements in the sequence
+# $t1 used for comparisons
+# $t2 used for shift in sign change
+# $t3 ones counter
+# $t4 register where I put 32
+# $t5 counter of the bit being analyzed
+
+# $s0 register where I put the read value (moving it here from v0)
+# $s1 register where I put the read value for shifts (I put it here to not dirty the correct value, which remains in s0)
+# $s2 register where I put the number with the maximum number of ones
+# $s3 register where I put the count of 1s in the number with the maximum number of ones
+# $s6 register where I put the number of even values
+# $s5 register where I put the number of odd values
+
+########################
+#   Store the found numbers
+#   Count how many times we did the division by two and how many times we did the other calculation
+
+    .data
+input:          .asciiz "Enter a number: "
+output:         .asciiz "Number of elements in the sequence: "
+maxOutputNum:   .asciiz "Number with the maximum amount of ones in its binary representation among those in the sequence: "
+maxOutputVal:   .asciiz "It has a number of ones equal to: "
+
+    .data 0x10010100
+results:        .space 1000
+
+    .text
+    .globl __start
+
+__start:
+    li $t4, 32            # Initialize the content of these two registers that will be used in calculating the number with the maximum amount of 1s in its binary representation
+    li $t5, 0             
+    li $t3, 0             # Reset the ones counter             
+    li $s2, 1             # Set it to 1, since in s3 I have a 1, so for example the number 1 has one 1 in its binary representation
+    li $s3, 1             # Set the value of the register that contains the maximum number of 1s found in the analyzed numbers, set to 1 because if I have 0 as parameter I don't do anything        
+    la $s4, results
+    li $s4, 0
+    li $s5, 0
+    
+    la $a0, input         # Print input prompt
+    li $v0, 4
+    syscall
+    
+    li $v0, 5             # Read input value
+    syscall
+    
+    li $t0, 1             # Number of elements in the sequence, minimum is 1
+    move $s0, $v0         # Put the read value in s0
+
+    srl $t2, $s0, 31      # Check if the number is positive or negative
+    beqz $t2, equalOnePrint
+
+    not $s0, $s0          # If the jump is not performed, then these two instructions invert the sign of the number from negative to positive
+    addi $s0, $s0, 1
+    
+equalOnePrint:           # If I had omitted this label I would have had the problem of printing the first negative number (if the number entered by the user was negative)
+    
+    # Print the value entered by the user since it is also the first element of the sequence
+    
+    move $a0, $s0        
+    li $v0, 1             # 1 means print an integer
+    syscall
+    
+    li $a0, ' '           # Print a space character    
+    li $v0, 11            # 11 for printing a character
+    syscall
+    
+equalOne:
+    
+    beqz $s0, endCycleWithZero  # If the number entered by the user is 0, nothing else needs to be done
+    beq $s0, 1, endCycle       # If the number entered by the user is 1, nothing else needs to be done
+    
+    and $t1, $s0, 1       # With this AND I can understand if the number is even or odd. I do this by zeroing all higher-weight bits, leaving only the least significant bit
+    beqz $t1, even        # If the result of the AND is zero then jump to the even procedure
+    
+    mul $s0, $s0, 3       # This is executed only if the number is odd
+    addiu $s0, $s0, 1     # Follow the procedure of doing 3 * c+1
+    addiu $s5, $s5, 1
+    move $s1, $s0
+    
+    j cycleDetectionOnes
+even:
+    sra $s0, $s0, 1       # Divide by 2
+    move $s1, $s0
+    addiu $s4, $s4, 1
+    
+cycleDetectionOnes:
+    
+    and $t1, $s1, 1       # In t1 I put the least significant bit of s0, which is shifted at each iteration
+    add $t3, $t3, $t1     # I add the value of the ones counter with the value of the least significant bit, if it is zero then the number of ones is not incremented (add 0)
+    addi $t5, $t5, 1      # Update the counter that keeps track of which bit I've reached during the analysis of s0
+    beq $t5, $t4, endCycledetection  # If the position counter equals the value 32, I exit the cycle because I've finished the analysis
+    srl $s1, $s1, 1       # Shift at each iteration so that I can analyze the bits individually
+    j cycleDetectionOnes
+
+endCycledetection:
+    
+    # Now I have in t3 the amount of 1s, s0 the corresponding number, s3 is the register that has the maximum number of 1s found, if it is less than t3 then I need to update s3
+    # I reuse t1 in comparisons because I don't care about maintaining the value it had previously
+    
+    blt $s3, $t3, update
+    j restoreValues
+
+update: 
+    move $s3, $t3         # Update the content of the register that contains the maximum number of ones found
+    move $s2, $s0         # Update the content of the register that contains the number corresponding to the max number of ones found
+    
+restoreValues:   
+    
+    # Need to reset the values of registers t3 (which contains the amount of 1s present in the number) and t5 (since it is set to 32, but I need to restart from index 0)
+    li $t3, 0
+    li $t5, 0
+
+print:
+    # Here I print the value just calculated (which is the next one in the Collatz sequence)
+    move $a0, $s0        
+    li $v0, 1             # 1 means print an integer
+    syscall
+
+    li $a0, ' '           # Print a space character    
+    li $v0, 11            # 11 indicates printing a character
+    syscall
+
+    # Update the elements counter  
+    addi $t0, $t0, 1
+    
+    #########################
+    
+    #sw $s0, 0($s4)
+    #addiu $s4, $s4, 4
+    
+    j equalOne
+
+endCycleWithZero:
+            
+    # If the number entered by the user is 0, then both maximums are 0
+    li $s3, 0    
+    li $s2, 0    
+
+endCycle:
+    # Print \n character and number of elements in the list (which is in t0)
+    
+    li $a0, '\n'          # Print new line character
+    li $v0, 11            # 11 is for printing a character
+    syscall
+    
+    la $a0, output
+    li $v0, 4
+    syscall
+
+    li $a0, '\n'          # Print new line character
+    li $v0, 11            
+    syscall
+    
+    move $a0, $t0         # Since the number (of elements in the sequence) obtained is in t0, I put it in a0 to be able to print it
+    li $v0, 1             # 1 means print an integer
+    syscall
+
+    li $a0, '\n'          # Print new line character
+    li $v0, 11        
+    syscall
+
+    # Print string and value of $s2, register where I put the number with the maximum number of ones
+    
+    la $a0, maxOutputNum
+    li $v0, 4
+    syscall
+
+    move $a0, $s2        
+    li $v0, 1         
+    syscall
+
+    li $a0, '\n'          # Print new line character
+    li $v0, 11        
+    syscall
+
+    # Print string and value of $s3, register where I put the count of 1s in the number with the maximum number of ones
+
+    la $a0, maxOutputVal
+    li $v0, 4
+    syscall
+
+    move $a0, $s3        
+    li $v0, 1         
+    syscall
+
+    # exit                # Syscall for program termination
+    li $v0, 10
+    syscall

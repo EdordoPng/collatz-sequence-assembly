@@ -1,0 +1,205 @@
+#		Edoardo Diana | 19/07/2020
+#
+# Questo programma chiede l'inserimento da parte dell'utente di un numero e provvede ad effettuare le seguenti computazioni:
+# 1. Calcola i numeri seuqnti nella sequenza di Collaz a partire dal numero inserito
+#	Il valore seguente nella sequenza di Collaz si ottiene : se x pari -> x/2
+# 								 se x dispari -> (x * 3) + 1
+# 2. Calcola il numero di elementi nella sequenza, infatti la sequenza terminerà sempre entro un insieme finito di elementi
+# 3. Calcola il numero corrispondente alla codifica che presenta il numero massimo di uni al suo interno, insieme al valore corrispondente
+
+# $t0 numero di elementi nella successione
+# $t1 usato nei confronti
+# $t2 usato per lo shift nel cambio segno
+# $t3 contatore di uni 
+# $t4 registro in cui metto 32
+# $t5 contatore del bit che sto analizzando
+
+# $s0 registro in cui metto il valore letto (spostandolo qui da v0)
+# $s1 registro in cui metto il valore letto per poi farvi gli shift (lo metto qui per non sporcare il valore corretto, che quindi resta in s0)
+# $s2 registro in cui metto il numero col valore massimo di uni
+# $s3 registro in cui metto l'ammontare di 1 nel numero col valore massimo di uni
+# $s6 registro in cui metto il num di pari
+# $s5 registro in cui metto il num di dispari
+
+########################
+#	Memorizzare i numeri trovati 
+#	Contare per quanti abbiamo fatto la divisione per due e per quanti abbiam fatto l'altro calcolo
+
+
+
+
+
+
+
+	.data
+input: 		.asciiz "Introduci un numero : "
+output: 	.asciiz "Numero di elementi nella sequenza: "
+maxOutputNum: 	.asciiz "Numero con l'ammontare massimo di uni nella propria codifica tra quelli della sequenza: "
+maxOutputVal: 	.asciiz "Esso presenta un ammontare di uni pari a : "
+
+		
+	.data 0x10010100
+risultati: 	.space 1000
+
+	.text
+	.globl __start
+
+__start:
+	li $t4, 32			# Inizializzo il contenuto di questi due registri che mi serviranno nel calcolo del numero che presenta il massimo ammontare di 1 nella sua codifica
+	li $t5, 0			
+	li $t3, 0			# Azzero il contatore di uni 			
+	li $s2, 1			# Lo setto ad 1, dato che in s3 ho un 1, quindi può per esempio esser 1 il numero che ha codifica con un solo 1 al suo interno
+	li $s3, 1			# Setto il valore del registro che contiene il numero massimo di 1 riscontrati nei numeri analizzati, lo metto ad 1 perchè se ho 0 come parametro non faccio nulla		
+	la $s4, risultati
+	li $s4, 0
+	li $s5, 0
+	
+	la $a0, input			# Stampo scritta di input
+	li $v0, 4
+	syscall
+	
+	li $v0, 5			# Acquisisco il valore letto
+	syscall
+	
+	li $t0, 1			# numero di elementi nella successione, minimo è 1
+	move $s0, $v0			# Metto il valore letto in s0
+
+	srl $t2, $s0, 31		# Controllo se il numero è positivo o negativo
+	beqz $t2, equalOneStampa
+
+	not $s0, $s0			# Se non effettuo il salto, allora queste due istruzioni invertono il segno del numero da negativo a positivo
+	addi $s0, $s0, 1
+	
+equalOneStampa:				# Se avessi omesso questa etichetta avevo il problema della stampa del primo numero negativo (nel caso il num inserito dall'utente fosse tale)
+	
+	# Stampo il valore inserito dall' utente dato che è anche il primo elemento della sequenza
+	
+	move $a0, $s0		
+	li $v0, 1			# 1 sta per dire stampa di un intero
+	syscall
+	
+	li $a0, ' '			# Stampa del carattere di spazio	
+	li $v0, 11			# 11 per per stampa Carattere
+	syscall
+	
+equalOne:
+	
+	beqz $s0, fineCicloConZero	# Se il numero inserito dall'utente è 0 non serve fare altro
+	beq $s0, 1, fineCiclo		# Se il numero inserito dall'utente è 1 non serve fare altro
+	
+	and $t1, $s0, 1			# Con questo AND riesco a capire se il numero è pari o dispari. Lo faccio azzerando tutti i bit di peso maggiore, lasciano solo quello di peso minore
+	beqz $t1, pari			# Se il risultato dell' And è zero allora salto alla procedura pari
+	
+	mul $s0, $s0, 3 		# Questo vien eseguito solo se il numero è dispari
+	addiu $s0, $s0, 1		# Seguo la procedura di fare 3 * c+1
+	addiu $s5, $s5, 1
+	move $s1, $s0
+	
+	j cicloRilevamentoUni
+pari: 	
+	sra $s0, $s0, 1			# Divido per 2
+	move $s1, $s0
+	addiu $s4, $s4, 1
+	
+cicloRilevamentoUni:
+	
+	and $t1, $s1, 1			# In t1 vado a mettere il bit meno significativo di s0, che viene shiftato ad ogni iterazione
+	add $t3, $t3, $t1		# Sommo il valore del contatore di uni col valore del bit meno significativo, se esso è zero allora il num di uni non vien incrementato (sommo 0)
+	addi $t5, $t5, 1		# Aggiorno il contatore che tiene traccia del bit a cui sono giunt durante l'analisi di s0
+	beq $t5, $t4, finCicloRil	# Se il contatore della posizione è uguale al valore 32, esco dal ciclo perchè ho terminato l'analisi
+	srl $s1, $s1, 1			# Shifto ad ogni iterazione così da poter analizzare singolarmente i bit
+	j cicloRilevamentoUni
+
+finCicloRil:
+	
+	# Ora ho in t3 ammontare 1, s0 il numero corrispondente, s3 è il registro che ha il massimo num di 1 riscontrati, se è minore di t3 allora serve aggiornare s3
+	# Riutilizzo t1 nei confronti perchè non mi interessa mantenere il valore che aveva precedentemente
+	
+	blt $s3, $t3, aggiorna
+	j ripristinaValori
+
+aggiorna: 
+	move $s3, $t3			# Aggiorno il contenuto del registro che contiene il numero max di uni riscontrati
+	move $s2, $s0			# Aggiorno il contenuto del registro che contiene il numero corrispondente al num. max di uni riscontrati
+	
+ripristinaValori:	
+	
+	# Tocca resettare a 0 i valori dei registri t3 (che contiene l'ammontare di 1 presenti nel numero) e t5 (dato che è settato a 32, ma io devo ripartire dall'indice 0)
+	li $t3, 0
+	li $t5, 0
+stampa:
+	# Qui stampo il valore appena calcolato (che è quello successivo nella sequenza di collaz)
+	move $a0, $s0		
+	li $v0, 1			# 1 sta per dire stampa di un intero
+	syscall
+
+	li $a0, ' '			# Stampa del carattere di spazio	
+	li $v0, 11			# 11 indica la stama di un carattere
+	syscall
+
+	# Aggiorna il contatore elementi  
+	addi $t0, $t0, 1
+	
+	#########################
+	
+	#sw $s0, 0($s4)
+	#addiu $s4, $s4, 4
+	
+	j equalOne
+
+fineCicloConZero:	
+			
+	# Se il numero inserito dall'utente è 0, allora i due massimi sono entrambi 0
+	li $s3, 0	
+	li $s2, 0	
+
+fineCiclo:
+	# Stampa carattere \n e numero di elementi nella lista (che sta in t0)
+	
+	li $a0, '\n'			# Stampa del carattere di new line
+	li $v0, 11			# 11 sta per stampa di un  carattere
+	syscall
+	
+	la $a0, output
+	li $v0, 4
+	syscall
+
+	li $a0, '\n'			# Stampa del carattere di new line
+	li $v0, 11			# 11 per cosa sta?
+	syscall
+	
+	move $a0, $t0			# Dato che il numero (di elementi nella sequenza) ottenuto sta in t0, lo metto in a0 per poterlo stampare
+	li $v0, 1			# 1 sta per dire stampa di un intero
+	syscall
+
+	li $a0, '\n'			# Stampa del carattere di new line
+	li $v0, 11		
+	syscall
+
+	# Stampo scritta e valore di $s2 ,registro in cui metto il numero col valore massimo di uni
+	
+	la $a0, maxOutputNum
+	li $v0, 4
+	syscall
+
+	move $a0, $s2		
+	li $v0, 1		 
+	syscall
+
+	li $a0, '\n'			# Stampa del carattere di new line
+	li $v0, 11		
+	syscall
+
+	# Stampo scritta e valore di $s3 ,registro in cui metto l'ammontare di 1 nel numero col valore massimo di uni
+
+	la $a0, maxOutputVal
+	li $v0, 4
+	syscall
+
+	move $a0, $s3		
+	li $v0, 1		 
+	syscall
+
+	#exit				# Syscall per la fine del programma
+	li $v0, 10
+	syscall
